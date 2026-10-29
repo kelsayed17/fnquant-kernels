@@ -38,4 +38,6 @@ lto = "fat"
 codegen-units = 1
 # A panic must unwind so `guarded` can turn it into KernelPanic; abort would kill the interpreter.
 panic = "unwind"
+# Belt and braces: `small` bounds every integer argument, so no kernel overflows; a regression panics (KernelPanic).
+overflow-checks = true
 strip = "symbols"

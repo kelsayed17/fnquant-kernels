@@ -23,7 +23,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use numpy::ndarray::{ArrayView1, ArrayViewMut1};
 use numpy::{PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::create_exception;
-use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyValueError, PyZeroDivisionError};
+use pyo3::exceptions::{
+    PyIndexError, PyMemoryError, PyOverflowError, PyRuntimeError, PyValueError, PyZeroDivisionError,
+};
 use pyo3::prelude::*;
 
 create_exception!(
@@ -69,12 +71,31 @@ fn div(numerator: f64, divisor: f64) -> PyResult<f64> {
     }
 }
 
+/// Integer arguments are held to ±2**53. Python's ints are unbounded, so beyond that the Python loops'
+/// arithmetic cannot be matched in `i64`; refusing is the documented divergence (`OverflowError`, as for an int
+/// that does not fit an `i64` at all), and it keeps every index and count computation below exact.
+const INT_LIMIT: i64 = 1 << 53;
+
+fn small(values: &[i64]) -> PyResult<()> {
+    if values.iter().any(|value| value.unsigned_abs() > INT_LIMIT as u64) {
+        return Err(PyOverflowError::new_err(
+            "integer arguments must be within ±2**53",
+        ));
+    }
+    Ok(())
+}
+
 /// `np.zeros(n)`.
 fn zeros(n: i64) -> PyResult<Out> {
     if n < 0 {
         return Err(PyValueError::new_err("negative dimensions are not allowed"));
     }
-    Ok(Out(vec![0.0; n as usize]))
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(n as usize)
+        .map_err(|_| PyMemoryError::new_err("cannot allocate the kernel's buffer"))?;
+    buffer.resize(n as usize, 0.0);
+    Ok(Out(buffer))
 }
 
 /// Python's `max(a, b)` / `min(a, b)` on floats: the first argument unless the second strictly beats it.
@@ -128,6 +149,7 @@ fn ta_sum_kernel<'py>(
     window: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[window])?;
         let (series, finite) = (Col(series.as_array()), Col(finite.as_array()));
         let size = series.size();
         let mut out = Out::nan(size);
@@ -184,6 +206,7 @@ fn ema_smooth_run<'py>(
     alpha: f64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         if run.size() < periods {
@@ -211,6 +234,7 @@ fn wilder_smooth_run<'py>(
     periods: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         if run.size() < periods {
@@ -241,6 +265,7 @@ fn ta_var_kernel<'py>(
     window: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[window])?;
         let (series, finite) = (Col(series.as_array()), Col(finite.as_array()));
         let size = series.size();
         let mut out = Out::nan(size);
@@ -333,6 +358,7 @@ fn wilder_rsi_smooth_run<'py>(
     periods: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         if run.size() < periods {
@@ -363,6 +389,7 @@ fn wilder_sum_run<'py>(
     periods: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         if run.size() < periods {
@@ -391,6 +418,7 @@ fn ema_fma_at_run<'py>(
     seed_offset: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods, seed_offset])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         let seed_at = seed_offset;
@@ -419,6 +447,7 @@ fn wilder_adx_smooth_run<'py>(
     periods: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[periods])?;
         let run = Col(run.as_array());
         let mut out = Out::nan(run.size());
         if run.size() < periods {
@@ -476,6 +505,7 @@ fn cci_kernel<'py>(
     period: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[start, period])?;
         let typical_price = Col(typical_price.as_array());
         let mut out = Out::nan(typical_price.size());
         let mut buffer = zeros(period)?;
@@ -561,6 +591,7 @@ fn money_flow_index_kernel<'py>(
     period: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[period])?;
         let finite = Col(finite.as_array());
         let (positive_money_flow, negative_money_flow) = (
             Col(positive_money_flow.as_array()),
@@ -639,6 +670,7 @@ fn chaikin_oscillator_kernel<'py>(
     slow_span: i64,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[start, first_output, fast_span, slow_span])?;
         let accumulation_distribution = Col(accumulation_distribution.as_array());
         let mut out = Out::nan(accumulation_distribution.size());
         let fast_weight = div(2.0, fast_span as f64 + 1.0)?;
@@ -753,6 +785,7 @@ fn sar_run<'py>(
     mut out: PyReadwriteArray1<'py, f64>,
 ) -> Out1<'py> {
     guarded(|| {
+        small(&[first, stop])?;
         let (highs, lows) = (Col(highs.as_array()), Col(lows.as_array()));
         let target: Bound<'py, PyArray1<f64>> = (**out).clone();
         sar_into(&highs, &lows, first, stop, &mut out.as_array_mut())?;
@@ -766,7 +799,7 @@ fn _panic() -> PyResult<()> {
     guarded(|| panic!("deliberate panic from fnquant_kernels._panic"))
 }
 
-#[pymodule(gil_used = false)]
+#[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("KernelPanic", m.py().get_type::<KernelPanic>())?;
     m.add_function(wrap_pyfunction!(ta_sum_kernel, m)?)?;

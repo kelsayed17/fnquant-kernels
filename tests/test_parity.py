@@ -167,3 +167,47 @@ def test_ta_var_on_a_negative_window_returns_or_raises_where_the_python_loop_nev
     series = np.linspace(1.0, 9.0, 9)
     with contextlib.suppress(Exception):  # ending in an Exception is the claim; a hang would time out
         fnquant_kernels.ta_var_kernel(series, np.isfinite(series), window)
+
+
+#: Every kernel taking an int, with a call whose int argument is the placeholder ``{}``.
+_INT_CALLS = {
+    "ta_sum_kernel": lambda v: (np.ones(3), np.ones(3, dtype=bool), v),
+    "ta_var_kernel": lambda v: (np.ones(3), np.ones(3, dtype=bool), v),
+    "ema_smooth_run": lambda v: (np.ones(3), v, 0.5),
+    "wilder_smooth_run": lambda v: (np.ones(3), v),
+    "wilder_rsi_smooth_run": lambda v: (np.ones(3), v),
+    "wilder_sum_run": lambda v: (np.ones(3), v),
+    "wilder_adx_smooth_run": lambda v: (np.ones(3), v),
+    "ema_fma_at_run": lambda v: (np.ones(3), v, 0),
+    "cci_kernel": lambda v: (np.ones(3), 0, v),
+    "money_flow_index_kernel": lambda v: (np.ones(3, dtype=bool), np.ones(3), np.ones(3), v),
+    "chaikin_oscillator_kernel": lambda v: (np.ones(3), 0, 0, v, 2),
+    "sar_run": lambda v: (np.ones(3), np.ones(3), v, 3, np.full(3, np.nan)),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_INT_CALLS))
+@pytest.mark.parametrize("value", [2**53 + 1, -(2**53) - 1, 2**62, -(2**62), 2**63 - 1, -(2**63), 2**63, -(2**63) - 1])
+def test_an_integer_beyond_two_to_the_53_is_refused_rather_than_wrapped(name: str, value: int) -> None:
+    """Python's ints are unbounded and ``i64`` is not, so the divergence is a refusal, never a wrong answer."""
+    with pytest.raises(OverflowError):
+        getattr(fnquant_kernels, name)(*_INT_CALLS[name](value))
+
+
+def test_a_buffer_that_cannot_be_allocated_is_a_memory_error_not_an_abort() -> None:
+    with pytest.raises(MemoryError):
+        fnquant_kernels.cci_kernel(np.ones(3), 0, 2**52)
+
+
+def test_sar_run_refuses_an_out_that_aliases_its_input_or_is_read_only() -> None:
+    """Python's loop reads and writes the same array freely; the extension holds a borrow, so it refuses both.
+
+    A documented divergence (``TypeError``): ``out`` is a scratch array the caller owns.
+    """
+    highs, lows = np.linspace(10.0, 12.0, 6), np.linspace(9.0, 11.0, 6)
+    with pytest.raises(TypeError):
+        fnquant_kernels.sar_run(highs, lows, 0, 6, highs)
+    read_only = np.full(6, np.nan)
+    read_only.flags.writeable = False
+    with pytest.raises(TypeError):
+        fnquant_kernels.sar_run(highs, lows, 0, 6, read_only)

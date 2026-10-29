@@ -25,6 +25,8 @@ build-backend = "maturin"
 python-source = "python"
 module-name = "fnquant_kernels._native"
 strip = true
+# Tests run against what ships: the release build (the wheels' profile), not a debug build with other overflow behaviour.
+profile = "release"
 
 [dependency-groups]
 dev = [

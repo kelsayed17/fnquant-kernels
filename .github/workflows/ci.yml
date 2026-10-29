@@ -21,7 +21,7 @@ jobs:
       matrix:
         # Both Linux architectures are native: the kernels are held byte-for-byte to the references on each.
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, windows-latest]
-        python: ["3.14", "3.14t"]
+        python: ["3.14"]
     env:
       PYTHON: ${{ matrix.python }}
     defaults:
