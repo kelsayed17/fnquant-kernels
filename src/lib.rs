@@ -77,7 +77,10 @@ fn div(numerator: f64, divisor: f64) -> PyResult<f64> {
 const INT_LIMIT: i64 = 1 << 53;
 
 fn small(values: &[i64]) -> PyResult<()> {
-    if values.iter().any(|value| value.unsigned_abs() > INT_LIMIT as u64) {
+    if values
+        .iter()
+        .any(|value| value.unsigned_abs() > INT_LIMIT as u64)
+    {
         return Err(PyOverflowError::new_err(
             "integer arguments must be within ±2**53",
         ));
