@@ -1,0 +1,41 @@
+[package]
+name = "fnquant-kernels"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "TA-Lib-exact per-bar numeric kernels as a CPython extension."
+publish = false
+repository = "https://github.com/kelsayed17/fnquant-kernels"
+
+[lib]
+name = "fnquant_kernels"
+crate-type = ["cdylib"]
+
+[dependencies]
+numpy = "0.30.0"
+pyo3 = { version = "0.30.1", features = ["extension-module"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Python's int and float model is the contract: every index and count is an i64 cast at the edge.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+float_cmp = "allow"
+many_single_char_names = "allow"
+needless_pass_by_value = "allow"
+too_many_lines = "allow"
+too_many_arguments = "allow"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+# A panic must unwind so `guarded` can turn it into KernelPanic; abort would kill the interpreter.
+panic = "unwind"
+strip = "symbols"
