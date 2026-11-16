@@ -1,0 +1,16 @@
+name: Feature request
+description: A TA-Lib recursive indicator that numpy cannot reproduce bit for bit.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The indicator
+      description: Which TA-Lib function, and why a numpy reduction does not match it exactly.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: The TA-Lib C source or documentation for it.
