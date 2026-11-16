@@ -797,13 +797,13 @@ fn sar_run<'py>(
 }
 
 /// Panics, so a test can show the panic reaches Python as `KernelPanic`.
-#[pyfunction]
-fn _panic() -> PyResult<()> {
+#[pyfunction(name = "_panic")]
+fn deliberate_panic() -> PyResult<()> {
     guarded(|| panic!("deliberate panic from fnquant_kernels._panic"))
 }
 
-#[pymodule]
-fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pymodule(name = "_native")]
+fn native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("KernelPanic", m.py().get_type::<KernelPanic>())?;
     m.add_function(wrap_pyfunction!(ta_sum_kernel, m)?)?;
     m.add_function(wrap_pyfunction!(ema_smooth_run, m)?)?;
@@ -819,5 +819,5 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(money_flow_index_kernel, m)?)?;
     m.add_function(wrap_pyfunction!(chaikin_oscillator_kernel, m)?)?;
     m.add_function(wrap_pyfunction!(sar_run, m)?)?;
-    m.add_function(wrap_pyfunction!(_panic, m)?)
+    m.add_function(wrap_pyfunction!(deliberate_panic, m)?)
 }
